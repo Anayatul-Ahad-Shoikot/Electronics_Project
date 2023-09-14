@@ -1,0 +1,160 @@
+// calling libraries 
+#include <Servo.h>
+#include <Keypad.h>
+#include <Arduino.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+
+
+
+// Creating objects of each class
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo liftingServo;
+Servo slidingServo;
+Servo laserDoorServo;
+
+
+
+// Declaring all necessary pins that attached to Arduino Uno
+#define buzzerPin A0
+#define pirPin 2
+#define liftingServoPin 3
+#define slidingServoPin 4
+#define laserDoorServoPin 5
+#define laserRCV_Pin 6
+const byte ROWS = 4;
+const byte COLS = 3;
+char keys[ROWS][COLS] = {
+  {'1', '2', '3'},
+  {'4', '5', '6'},
+  {'7', '8', '9'},
+  {'*', '0', '#'}
+  };
+byte rowPins[ROWS] = {13, 12, 11, 10};
+byte colPins[COLS] = {9, 8, 7};
+
+
+
+// Declaring variables for flagging states
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+bool pirActive = true;
+unsigned long pirLastDeactivationTime = 0;
+const unsigned long pirDeactivationDelay = 10000;
+
+
+
+
+// Setting up everything for first time run and set all devices to it's default state
+void setup() {
+  liftingServo.attach(liftingServoPin);
+  slidingServo.attach(slidingServoPin);
+  laserDoorServo.attach(laserDoorServoPin);
+  pinMode(pirPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW);
+  liftingServo.write(0);
+  slidingServo.write(130);
+  laserDoorServo.write(0);
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("System Status:");
+  Serial.begin(9600);
+}
+
+
+
+
+
+
+// This loop will run continuously and collect data from environments 
+void loop() {
+
+  lcd.setCursor(0, 1);
+  lcd.print("All OK  :D");
+
+  // callin functions 
+  LASER();
+  PIR();
+
+  // Taking user password and matching 
+  char key = keypad.getKey();
+  if (key) {
+    if (key == '7') {
+      deactivatePIR();
+      liftingServo.write(0);
+      slidingServo.write(130);
+      laserDoorServo.write(0);
+      lcd.setCursor(0, 1);
+      lcd.print("System Reset");
+      delay(3000);
+      digitalWrite(buzzerPin, LOW);
+    } else {
+      Serial.println("Invalid key.");
+      lcd.setCursor(0, 1);
+      lcd.print("Wrong Pass");
+      //activateAlarm();
+      digitalWrite(buzzerPin, HIGH);
+      delay(3000);
+      digitalWrite(buzzerPin, LOW);
+  }
+}
+}
+
+
+// helper functions
+void LASER() {
+  int laserValue = digitalRead(laserRCV_Pin);
+  if (laserValue == LOW) {
+    digitalWrite(buzzerPin, HIGH);
+    laserDoorServo.write(180);
+    //sendSMS();
+    lcd.setCursor(0, 1);
+    lcd.print("Laser Alert!!!");
+    delay(3000);
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+    digitalWrite(buzzerPin, LOW);
+  } 
+  else {
+    digitalWrite(buzzerPin, LOW);
+  }
+}
+
+
+
+void PIR(){
+  if (pirActive && digitalRead(pirPin) == HIGH) {
+    activateAlarm();
+  }
+
+  if (!pirActive && millis() - pirLastDeactivationTime >= pirDeactivationDelay) {
+    pirActive = true;
+    Serial.println("PIR reactivated.");
+  }
+}
+
+void activateAlarm() {
+  pirActive = false;
+  pirLastDeactivationTime = millis();
+  liftingServo.write(130);
+  slidingServo.write(60);
+  //tone(buzzerPin, 1000, 500);
+  //delay(1000);
+  //noTone(buzzerPin);
+  digitalWrite(buzzerPin, HIGH);
+  Serial.println("Intruder detected!");
+  lcd.setCursor(0, 1);
+  lcd.print("PIR Alert!!!");
+  delay(3000);
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  digitalWrite(buzzerPin, LOW);
+}
+
+void deactivatePIR() {
+  pirActive = false;
+  pirLastDeactivationTime = millis();
+  Serial.println("PIR deactivated for 10 seconds.");
+}
+
